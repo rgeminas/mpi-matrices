@@ -33,6 +33,14 @@ int main(int argc, char** argv)
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);	/* get current process id */
     MPI_Comm_size(MPI_COMM_WORLD, &size);	/* get number of processes */
 
+    linesize = floor(sqrt(size));
+    max_rank = linesize * linesize - 1;
+    if (max_rank + 1 != size)
+    {
+        logproc("Error: Number of processes must be a square number.\n");
+        MPI_Finalize();   
+        exit(0);
+    }
     // We're getting everything through a file.
     assert (argc > 1);
     m_file = fopen(argv[1], "r");
@@ -42,23 +50,14 @@ int main(int argc, char** argv)
 
     // Some processes will be left idling if you assign too many since we're
     // dividing equally in rows and columns. Such is life.
-    linesize = floor(sqrt(size));
-    max_rank = linesize * linesize - 1;
     if (m_rank % linesize != 0) 
     {
         logproc("Matrix rank not divisible by process line size. Aborting.\n");
         MPI_Finalize();   
         exit(0);
     }
-    if (rank > max_rank)
-    {
-        logproc("I am useless: finalizing...\n");
-        MPI_Finalize();   
-        exit(0);
-    }
     else
     {
-        int i;
         int period[] = { 0, 0 };
         MPI_Comm row_comm, column_comm;
 
@@ -87,6 +86,7 @@ int main(int argc, char** argv)
         diagonal = malloc(s_rank * sizeof(double));
         if (row == column)
         {
+            int i;
             for (i = 0; i < s_rank; i++)
             {
                 diagonal[i] = matrix[i][i];
@@ -103,12 +103,56 @@ int main(int argc, char** argv)
 
         logproc("I have the diagonals\n");
 
+        int i, j;
         for (i = 0; i < s_rank; i++)
         {
             logproc("Diagonal %d: %lf\n", i, diagonal[i]);
         }
-        MPI_Finalize(); 
+        
+        // Multiplying numbers in the matrix by the diagonal.
+        for (i = 0; i < s_rank; i++)
+        {
+            for (j = 0; j < s_rank; j++)
+            {
+                matrix[i][j] *= diagonal[i];
+                //logproc("(%d, %d): %lf\n", i, j, matrix[i][j]);
+            }
+        }
+        
+        // Sum elements by column.
+        double* local_column_sum = malloc(s_rank * sizeof(double));
+        double* global_column_sum = malloc(s_rank * sizeof(double));
 
+        for (i = 0; i < s_rank; i++)
+        {
+            for (j = 0; j < s_rank; j++)
+            {
+                local_column_sum[j] += matrix[i][j];
+            }
+        }
+
+        MPI_Reduce(local_column_sum, global_column_sum, s_rank, MPI_DOUBLE, MPI_SUM, 0, column_comm); 
+        if (row == 0)
+        {
+            for (j = 0; j < s_rank; j++)
+            {
+                logproc("Partial sum of column %d: %lf\n", j, global_column_sum[j]);
+            }
+        }
+        // Sum elements by row (only on row 0) 
+        double local_row_column_sum = 0;
+        double global_row_column_sum = 0;
+
+        for (i = 0; i < s_rank; i++)
+        {
+            local_row_column_sum += global_column_sum[i];
+        }
+
+        MPI_Reduce(&local_row_column_sum, &global_row_column_sum, 1, MPI_DOUBLE, MPI_SUM, 0, row_comm); 
+        if (rank == 0)
+            logproc("\nSum of all elements of the transformed matrix: %lf\n", j, global_row_column_sum);
+
+        MPI_Finalize(); 
     }
     return 0;
 }
