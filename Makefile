@@ -1,7 +1,10 @@
 CC=mpicc
 CFLAGS = -Wall -g -lm
 
-main: main.c
-	${CC} ${CFLAGS} main.c -o main
+SOURCES = main.c
+HEADERS = read_matrix.h
+
+main: $(SOURCES) $(HEADERS)
+	${CC} ${CFLAGS} $(SOURCES) -I . -o main
 clean:
 	rm -f main

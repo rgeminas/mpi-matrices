@@ -6,9 +6,14 @@
 #include <stdlib.h>
 #include <signal.h>
 
-int rank, size, linesize, max_rank, m_rank, line, column, s_rank;
+#include "read_matrix.h"
+
+int rank, size, linesize, max_rank, m_rank, row, column, s_rank;
+int dim[2], coord[2];
 FILE* m_file;
 double** matrix;
+double* diagonal;
+MPI_Comm cart_comm;
 
 //
 // Basically wraps around printf, but writing the process name too.
@@ -20,51 +25,6 @@ void logproc(char* format, ...)
    printf("Process %d/%d: ", rank, size);
    vprintf(format, args);
    va_end(args);
-}
-
-void skip_line()
-{
-    int i = m_rank, n;
-    // Usage of the obscure --> operator!
-    while (i --> 0)
-    {
-        fscanf(m_file, "%d", &n);
-    }
-}
-
-void read_matrix()
-{
-    double buf, *data = malloc(s_rank * s_rank * sizeof(double));
-    int i, j;
-    matrix = malloc(s_rank * sizeof(double*));
-
-    for (i = 0; i < s_rank; i++)
-    {
-        matrix[i] = data;
-        data += s_rank;
-    }
-    // f will be divided into `size` submatrices;
-    // We'll skip lines until we get to the first of our lines
-    for (i = 0; i < s_rank * line; i++)
-    {
-        skip_line();
-    }
-    for (i = 0; i < s_rank; i++)
-    {
-        for (j = 0; j < s_rank * column; j++)
-        {
-            fscanf(m_file, "%lf", &buf); 
-        }
-        for (j = 0; j < s_rank; j++)
-        {
-            fscanf(m_file, "%lf", &matrix[i][j]);
-            logproc("%d, %d: %lf\n", i, j, matrix[i][j]);
-        }
-        for (j = 0; j + s_rank * column + s_rank < m_rank; j++)
-        {
-            fscanf(m_file, "%lf", &buf);
-        }
-    }
 }
 
 int main(int argc, char** argv)
@@ -98,11 +58,57 @@ int main(int argc, char** argv)
     }
     else
     {
-        line = rank / linesize, column = rank % linesize;
+        int i;
+        int period[] = { 0, 0 };
+        MPI_Comm row_comm, column_comm;
+
+        // The single-row maintains the column dimension and vice-versa
+        int row_only[] = {0, 1};
+        int column_only[] = {1, 0};
+
+        dim[0] = linesize, dim[1] = linesize;
+
+        // Create cartesian communicators.
+        MPI_Cart_create(MPI_COMM_WORLD, 2, dim, period, 0, &cart_comm); 
+        MPI_Cart_coords(cart_comm, rank, 2, coord); 
+        logproc("I am on line %d, column %d on the cartesian communicator.\n", coord[0], coord[1]);
+
+        // Read the matrix from the file.
+        row = coord[0], column = coord[1];
         s_rank = m_rank / linesize;
-        logproc("I am on line %d, column %d. I'll read a rank %d matrix.\n", line, column, s_rank);
+        logproc("I'll read a rank %d matrix.\n", s_rank);
         read_matrix();
+
+        // Create row and column communicators.
+        MPI_Cart_sub(cart_comm, row_only, &row_comm);
+        MPI_Cart_sub(cart_comm, column_only, &column_comm);
+        
+        // If we're diagonal holders, broadcast the diagonal vector.
+        diagonal = malloc(s_rank * sizeof(double));
+        if (row == column)
+        {
+            for (i = 0; i < s_rank; i++)
+            {
+                diagonal[i] = matrix[i][i];
+            }
+        }
+        // The rank should be gotten from the row communicator, not the cartesian one.
+        int diag_holder[] = { row };
+        int bcast_rank;
+        MPI_Cart_rank(row_comm, diag_holder, &bcast_rank);
+
+        logproc("About to do broadcast\n");
+
+        MPI_Bcast(diagonal, s_rank, MPI_DOUBLE, bcast_rank, row_comm);
+
+        logproc("I have the diagonals\n");
+
+        for (i = 0; i < s_rank; i++)
+        {
+            logproc("Diagonal %d: %lf\n", i, diagonal[i]);
+        }
+        MPI_Finalize(); 
+
     }
-    MPI_Finalize();   
     return 0;
 }
