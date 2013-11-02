@@ -16,3 +16,9 @@
 *.exe
 *.out
 *.app
+main
+
+# Vim files
+*.swp
+*.swo
+.clang_complete
