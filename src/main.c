@@ -39,11 +39,17 @@ int main(int argc, char** argv)
     {
         logproc("Error: Number of processes must be a square number.\n");
         MPI_Finalize();   
-        exit(0);
+        exit(1);
     }
     // We're getting everything through a file.
     assert (argc > 1);
     m_file = fopen(argv[1], "r");
+    if (m_file == NULL)
+    {
+        logproc("Invalid file %s.\n", argv[1]);
+        MPI_Finalize(); 
+        exit(1);
+    }
     fscanf(m_file, "%d\n", &m_rank); 
     
     logproc("Reading a matrix of rank %d\n", m_rank);
@@ -52,7 +58,7 @@ int main(int argc, char** argv)
     {
         logproc("Matrix rank not divisible by process line size. Aborting.\n");
         MPI_Finalize();   
-        exit(0);
+        exit(1);
     }
     else
     {
