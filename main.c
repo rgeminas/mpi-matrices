@@ -48,8 +48,6 @@ int main(int argc, char** argv)
     
     logproc("Reading a matrix of rank %d\n", m_rank);
 
-    // Some processes will be left idling if you assign too many since we're
-    // dividing equally in rows and columns. Such is life.
     if (m_rank % linesize != 0) 
     {
         logproc("Matrix rank not divisible by process line size. Aborting.\n");
@@ -58,6 +56,8 @@ int main(int argc, char** argv)
     }
     else
     {
+        // Our communicator doesn't flip over. This is irrelevant even if you
+        // set it to true.
         int period[] = { 0, 0 };
         MPI_Comm row_comm, column_comm;
 
@@ -76,7 +76,7 @@ int main(int argc, char** argv)
         row = coord[0], column = coord[1];
         s_rank = m_rank / linesize;
         logproc("I'll read a rank %d matrix.\n", s_rank);
-        read_matrix();
+        matrix = read_matrix(m_file, m_rank, s_rank, row, column);
 
         // Create row and column communicators.
         MPI_Cart_sub(cart_comm, row_only, &row_comm);
@@ -97,11 +97,15 @@ int main(int argc, char** argv)
         int bcast_rank;
         MPI_Cart_rank(row_comm, diag_holder, &bcast_rank);
 
-        logproc("About to do broadcast\n");
+        if (column == row)
+            logproc("About to do broadcast\n");
+        else
+            logproc("About to receive broadcast\n");
 
         MPI_Bcast(diagonal, s_rank, MPI_DOUBLE, bcast_rank, row_comm);
 
-        logproc("I have the diagonals\n");
+        if (column != row)
+            logproc("I have the diagonals\n");
 
         int i, j;
         for (i = 0; i < s_rank; i++)
