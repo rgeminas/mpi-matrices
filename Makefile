@@ -1,8 +1,8 @@
 CC=mpicc
-CFLAGS = -Wall -g -lm -I.
+CFLAGS = -Wall -g -lm -I./src
 
-SOURCES = main.c read_matrix.c
-HEADERS = read_matrix.h
+SOURCES = src/main.c src/read_matrix.c
+HEADERS = src/read_matrix.h
 
 main: $(SOURCES) $(HEADERS)
 	${CC} ${CFLAGS} $(SOURCES) -o main
