@@ -10,8 +10,7 @@ void logproc(char* format, ...);
 void skip_line(FILE* m_file, int m_rank)
 {
     int i = m_rank, n;
-    // Usage of the obscure --> operator!
-    while (i --> 0)
+    while (i --> 0) // i goes to 0
     {
         fscanf(m_file, "%d", &n);
     }
